@@ -1,16 +1,15 @@
-
 import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Universal Excel Consolidator", layout="wide")
-st.title("🗂️ Universal Multi-Excel Schema Mapper & Consolidator")
-st.write("Upload multiple Excel sheets, declare your custom target columns, and compile them into a unified master file.")
+st.set_page_config(page_title="Universal File Consolidator", layout="wide")
+st.title("🗂️ Universal Multi-File Schema Mapper & Consolidator")
+st.write("Upload multiple Excel sheets or CSV files, declare your custom target columns, and compile them into a unified master file.")
 
 # 1. Configuration Sidebar
 st.sidebar.header("⚙️ Consolidation Settings")
 
-# Completely generic, generic default configuration fields
+# Completely generic, default configuration fields
 default_headers = "First Name, Last Name, Email, Phone Number, Status"
 headers_input = st.sidebar.text_area(
     "Target Headers (Comma Separated):", 
@@ -21,10 +20,10 @@ headers_input = st.sidebar.text_area(
 # Parse inputs into a clean configuration list
 target_headers = [h.strip() for h in headers_input.split(",") if h.strip()]
 
-# 2. File Upload Zone
+# 2. File Upload Zone (Accepts both xlsx and csv now)
 uploaded_files = st.file_uploader(
-    "Upload Your Excel Files (.xlsx)", 
-    type=["xlsx"], 
+    "Upload Your Excel or CSV Files (.xlsx, .csv)", 
+    type=["xlsx", "csv"], 
     accept_multiple_files=True
 )
 
@@ -44,11 +43,16 @@ if uploaded_files:
         
         for idx, file_obj in enumerate(uploaded_files):
             file_name = file_obj.name
+            is_csv = file_name.lower().endswith('.csv')
             status_text.text(f"Scanning schema for: {file_name}...")
             
             try:
-                # Read only header metadata first to optimize processing speeds
-                df_header = pd.read_excel(file_obj, nrows=0)
+                # Read only header metadata first based on file format
+                if is_csv:
+                    df_header = pd.read_csv(file_obj, nrows=0)
+                else:
+                    df_header = pd.read_excel(file_obj, nrows=0)
+                    
                 file_columns = df_header.columns.tolist()
                 
                 # Case-insensitive header matching map
@@ -74,7 +78,12 @@ if uploaded_files:
                 
                 if columns_to_load:
                     file_obj.seek(0)
-                    df_full = pd.read_excel(file_obj, usecols=columns_to_load)
+                    
+                    # Read the full content optimizing for the correct file extension format
+                    if is_csv:
+                        df_full = pd.read_csv(file_obj, usecols=columns_to_load)
+                    else:
+                        df_full = pd.read_excel(file_obj, usecols=columns_to_load)
                     
                     # Dynamically convert rows to dictionaries mapping back to target configs
                     for _, row in df_full.iterrows():
