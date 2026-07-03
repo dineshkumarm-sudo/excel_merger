@@ -9,7 +9,6 @@ st.write("Upload multiple Excel sheets or CSV files, declare your custom target 
 # 1. Configuration Sidebar
 st.sidebar.header("⚙️ Consolidation Settings")
 
-# Completely generic, default configuration fields
 default_headers = "First Name, Last Name, Email, Phone Number, Status"
 headers_input = st.sidebar.text_area(
     "Target Headers (Comma Separated):", 
@@ -17,15 +16,31 @@ headers_input = st.sidebar.text_area(
     help="Type the exact column headers you want to extract and combine into your final sheet."
 )
 
-# Parse inputs into a clean configuration list
 target_headers = [h.strip() for h in headers_input.split(",") if h.strip()]
 
-# 2. File Upload Zone (Accepts both xlsx and csv now)
+# 2. File Upload Zone
 uploaded_files = st.file_uploader(
     "Upload Your Excel or CSV Files (.xlsx, .csv)", 
     type=["xlsx", "csv"], 
     accept_multiple_files=True
 )
+
+# Helper function to read CSVs with an encoding safety net
+def safe_read_csv(file_obj, usecols=None, nrows=None):
+    encodings_to_try = ['utf-8', 'cp1252', 'latin1', 'utf-16']
+    for encoding in encodings_to_try:
+        try:
+            file_obj.seek(0)
+            if nrows == 0:
+                return pd.read_csv(file_obj, nrows=0)
+            return pd.read_csv(file_obj, usecols=usecols, nrows=nrows)
+        except (UnicodeDecodeError, TypeError):
+            continue
+    # If all encodings fail, let standard error raise to be caught by main loop
+    file_obj.seek(0)
+    if nrows == 0:
+        return pd.read_csv(file_obj, nrows=0)
+    return pd.read_csv(file_obj, usecols=usecols, nrows=nrows)
 
 if uploaded_files:
     st.info(f"📚 Loaded {len(uploaded_files)} files into memory buffer. Ready to process.")
@@ -49,7 +64,7 @@ if uploaded_files:
             try:
                 # Read only header metadata first based on file format
                 if is_csv:
-                    df_header = pd.read_csv(file_obj, nrows=0)
+                    df_header = safe_read_csv(file_obj, nrows=0)
                 else:
                     df_header = pd.read_excel(file_obj, nrows=0)
                     
@@ -69,30 +84,25 @@ if uploaded_files:
                     else:
                         missing_in_this_file.append(target)
                         
-                # Log files that have structural mismatch errors
                 if missing_in_this_file:
                     missing_headers_log[file_name] = missing_in_this_file
                     
-                # Load content only if matching header elements exist
                 columns_to_load = list(matched_file_columns.values())
                 
                 if columns_to_load:
-                    file_obj.seek(0)
-                    
                     # Read the full content optimizing for the correct file extension format
                     if is_csv:
-                        df_full = pd.read_csv(file_obj, usecols=columns_to_load)
+                        df_full = safe_read_csv(file_obj, usecols=columns_to_load)
                     else:
+                        file_obj.seek(0)
                         df_full = pd.read_excel(file_obj, usecols=columns_to_load)
                     
-                    # Dynamically convert rows to dictionaries mapping back to target configs
                     for _, row in df_full.iterrows():
                         compiled_row = {"Source File Name": file_name}
                         
                         for target, actual_col in matched_file_columns.items():
                             compiled_row[target] = row[actual_col]
                             
-                        # Missing columns in specific files safely populate as blank (None)
                         for target in missing_in_this_file:
                             compiled_row[target] = None
                             
@@ -125,14 +135,12 @@ if uploaded_files:
         if master_rows:
             master_df = pd.DataFrame(master_rows)
             
-            # Reorder columns with the source log file name tracking column up front
             ordered_cols = ["Source File Name"] + target_headers
             master_df = master_df[ordered_cols]
             
             st.subheader(f"📊 Consolidated Master Preview ({len(master_df)} Total Rows Combined)")
             st.dataframe(master_df.head(100), use_container_width=True)
             
-            # Excel export script wrapper
             out_buffer = io.BytesIO()
             with pd.ExcelWriter(out_buffer, engine='openpyxl') as writer:
                 master_df.to_excel(writer, index=False, sheet_name="Master Consolidated")
