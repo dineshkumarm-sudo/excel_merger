@@ -25,22 +25,23 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-# Helper function to read CSVs with an encoding safety net
+# Helper function to read CSVs with an encoding safety net (FIXED)
 def safe_read_csv(file_obj, usecols=None, nrows=None):
     encodings_to_try = ['utf-8', 'cp1252', 'latin1', 'utf-16']
     for encoding in encodings_to_try:
         try:
             file_obj.seek(0)
             if nrows == 0:
-                return pd.read_csv(file_obj, nrows=0)
-            return pd.read_csv(file_obj, usecols=usecols, nrows=nrows)
-        except (UnicodeDecodeError, TypeError):
+                return pd.read_csv(file_obj, nrows=0, encoding=encoding)
+            return pd.read_csv(file_obj, usecols=usecols, nrows=nrows, encoding=encoding)
+        except Exception:
             continue
-    # If all encodings fail, let standard error raise to be caught by main loop
+            
+    # Ultimate fallback: replace unreadable characters instead of crashing
     file_obj.seek(0)
     if nrows == 0:
-        return pd.read_csv(file_obj, nrows=0)
-    return pd.read_csv(file_obj, usecols=usecols, nrows=nrows)
+        return pd.read_csv(file_obj, nrows=0, encoding='utf-8', errors='replace')
+    return pd.read_csv(file_obj, usecols=usecols, nrows=nrows, encoding='utf-8', errors='replace')
 
 if uploaded_files:
     st.info(f"📚 Loaded {len(uploaded_files)} files into memory buffer. Ready to process.")
